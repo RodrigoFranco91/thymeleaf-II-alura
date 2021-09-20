@@ -1,0 +1,132 @@
+Neste capítulo falamos sobre como fazer o monitoramento de nossa aplicação com interceptadores.
+
+
+Hoje quando um usuário faz uma requisição a mesma bate (cai) numa classe Controller.
+
+Imagina que surge a necessidade de avaliarmos o desemepenho de nossa aplicação, para verificar se precisa de algum tipo de otimização.
+
+Para levantarmos o uso de nossa aplicação, ou seja, descobrir quantas requisiçoes a página X tem e quanto leva cada requisição e 
+outras informações podemos usar um Interceptador.
+
+Tenha em mente que um Interceptor é uma classe Java que vamos mapear para quais requisiçoes ele vai interceptar. Um interceptador fica
+antes da classe Controler, ou seja, uma requisição enviada pelo usuário vai primeiro passar pelo Intercptor. E um interceptor vai ter
+conhecimento da requisição e da resposta (Request e Resonse).
+
+Vamos criar nosso interceptor. Siga o passo a passo:
+
+1) Cria a classe InterceptadorDeAcessos que deve ser filha de HandlerInterceptorAdapter;
+
+2) Na classe InterceptadorDeAcessos devemos sobrescrever o método preHandle() e o afterCompletion(). O método preHandle() trata o 
+inicio da requisição (antes de bater no controller) e o método afterCompletion() é após já termos a reposta da requisição. Veja como
+ficou:
+
+	@Override
+	public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+			throws Exception {
+
+		Acesso acesso = new Acesso();
+		//Pegando o path acessado.
+		acesso.path = request.getRequestURI();
+		//Pegando a data de agora, ou seja, da requisicao.
+		acesso.data = LocalDateTime.now();
+		
+		request.setAttribute("acesso", acesso);
+		return true;
+	}
+	
+	@Override
+	public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex)
+			throws Exception {
+		
+		//Recuperando o Acesso, que foi criado no preHandle()
+		Acesso acesso = (Acesso) request.getAttribute("acesso");
+		acesso.duracao = 	Duration.between(acesso.data, LocalDateTime.now());
+		
+	}
+	
+3) Criamos dentro deste mesmo arquivo (poderia ser fora) a classe Acesso, para termos onde guardar os dados. Veja:
+
+	class Acesso{
+		
+		private String path;
+		private LocalDateTime data;
+		private Duration duracao;
+		
+	}
+	
+4) Para simular um banco de dados, criamos uma lista estatica na classe InterceptadorDeAcessos para armazenar os objetos do tipo
+Acesso. Veja como ficou a classe:
+
+public class InterceptadorDeAcessos extends HandlerInterceptorAdapter{
+
+	//Poderiamos salvar o acesso no banco de dados.
+	//Vamos fazer essa lista para simular um banco de dados.
+	public static List<Acesso> acessos = new ArrayList<>();
+	
+	@Override
+	public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+			throws Exception {
+
+		Acesso acesso = new Acesso();
+		//Pegando o path acessado.
+		acesso.path = request.getRequestURI();
+		//Pegando a data de agora, ou seja, da requisicao.
+		acesso.data = LocalDateTime.now();
+		
+		request.setAttribute("acesso", acesso);
+		return true;
+	}
+	
+	@Override
+	public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex)
+			throws Exception {
+		
+		//Recuperando o Acesso, que foi criado no preHandle()
+		Acesso acesso = (Acesso) request.getAttribute("acesso");
+		acesso.duracao = 	Duration.between(acesso.data, LocalDateTime.now());
+		
+		//"Salvando" o acesso.
+		acessos.add(acesso);
+	}
+	
+	public static class Acesso{
+		
+		private String path;
+		private LocalDateTime data;
+		private Duration duracao;
+		
+		//Getters e Setters
+	}
+	
+}
+
+5) Ainda nosso interceptor não funciona. Temos que criar uma classe de configuração. Criamos a classe WebConfig que deve ser filha
+de WebMvcConfigurationSupport. A classe WebConfig deve ser anotada com @Configuration, assim o Spring passará a gerenciar essa 
+classe.
+
+6) Devemos sobrescrever o método addInterceptors() e nele vamos mapear um interceptor para um path de requisiçao. Veja:
+
+	@Configuration
+	public class WebConfig extends WebMvcConfigurationSupport {
+
+		@Override
+		protected void addInterceptors(InterceptorRegistry registry) {
+			
+			//Mapeando o nosso InterceptadorDeAcessos para todos os paths (/**)
+			registry.addInterceptor(new InterceptadorDeAcessos()).addPathPatterns("/**");
+			
+		}
+	}
+	
+	
+Agora a lista acessos da classe InterceptadorDeAcessos tem os dados de acesso. Podemos criar uma classe Controller para expor esses
+dados. Para isso siga o passo a passo:
+
+1) Criar a classe AcessosRest anotada com @RestController e @RequestMapping("/acesso")
+
+2) Criar o metodo getAcessos() anotado com @GetMapping que retorna a lista do nosso interceptador. Veja:
+
+	@GetMapping
+	public List<Acesso> getAcessos(){
+		return InterceptadorDeAcessos.acessos;
+	}

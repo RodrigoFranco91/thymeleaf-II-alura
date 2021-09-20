@@ -1,0 +1,58 @@
+Neste capitulo construimos uma API Rest. Para isso siga o passo a passo:
+
+1) O primeiro passo é criar o pacote br.com.alura.mvc.mudi.api e tudo que for da API Rest deve ser colocado neste pacote.
+
+2) Criar no pacote api a classe PedidoRest e anotá-la com  @RestController e @RequestMapping("/api/pedidos")
+
+3) Criar na classe o atributo do tipo PedidoRepository anotado com @Autowired
+
+4) Criar o metodo getPedidosAguardandoOfertas() que vai retornar uma lista de pedidos com status aguardando. A ordem da listagem será
+do ID mais recente. Esse método deve ser anotado com @GetMapping("aguardando")
+
+5) Veja como ficou essa classe:
+
+	@RestController
+	@RequestMapping("/api/pedidos")
+	public class PedidoRest {
+		
+		@Autowired
+		private PedidoRepository pedidoRepository;
+
+		@GetMapping("aguardando")
+		public List<Pedido> getPedidosAguardandoOfertas(){
+			Sort sort = Sort.by("id").descending();
+			PageRequest paginacao = PageRequest.of(0, 5, sort);
+			
+			return pedidoRepository.findByStatus(StatusPedido.AGUARDANDO, paginacao);
+			
+		}
+		
+	}
+
+Agora ja vamos ter um PATH que que retorna uma lista de pedidos no formato JSON! Assim a aplicação FRONT-END feita em VUE que vamos
+fazer vai poder consultar!
+
+
+
+Agora precisamos criar a tela (não a tela que vai com as informações para o usuário) será a tela para apresentar formularios pro
+usuario criar ofertas. Siga o passo a passo pra isso:
+
+1) Criar na pasta controller a classe OfertaController anotado com @Controller e @RequestMapping("/oferta)";
+
+2) Criar o metodo getFormularioParaOfertas() que vai enviar para página;
+
+3) Na pasta templates criar a pasta oferta e dentro desta pasta criar o arquivo home.html (podemos copiar e colar o arquivo home.html 
+de usuários não logado). Depois com VUE vamos trabalhar com essa página.
+
+4) Veja como ficou essa classe:
+
+	@Controller
+	@RequestMapping("/oferta")
+	public class OfertaController {
+		
+		@GetMapping
+		public String getFormularioParaOfertas() {
+			return "oferta/home";
+		}
+
+	}

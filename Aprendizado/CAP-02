@@ -1,0 +1,223 @@
+Neste capitulo falamos sobre o Provedor de autenticação.
+
+
+O Spring Security já prove uma implementação que cria e salva usuários no banco de dados. Basta criamos as tabelas seguindo sua
+regra e criar o método configure() com o argumento AuthenticationManagerBuilder na classe WebSecurityConfig. Essa implementação 
+utiliza JDBC. Siga o passo a passo:
+
+1) Na classe WebSecurityConfig sobrescreva o metodo configure() que tem o argumento do tipo AuthenticationManagerBuilder.
+
+2) No nosso banco de dados, rode o seguinte script para criar as tabelas:
+
+	create table users(
+	    username varchar(50) not null primary key,
+	    password varchar(500) not null,
+	    enabled boolean not null
+	);
+
+	create table authorities (
+	    username varchar(50) not null,
+	    authority varchar(50) not null,
+	    constraint fk_authorities_users foreign key(username) references users(username)
+	);
+
+	create unique index ix_auth_username on authorities (username,authority);
+	
+3) Agora vamos implementar o método configure() criado no primeiro passo. Por estarmos usando JDBC vamos precisar de um DataSource,
+mas o Spring cria pra nós, basta criar na classe o atributo DataSource anotado com @Autowired, ficando assim:
+
+	@Autowired
+	private DataSource dataSource;
+	
+Agora o método configure() vai ficar assim:
+
+	@Override
+	protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+		
+		//Cria o encriptador
+		BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+		
+		//Criando o primeiro usuario e salvando no banco
+		//Esse código é apenas para teste! Na vida real não pode ficar aqui!!!
+		UserDetails user =
+				 User.builder()
+					.username("maria")
+					.password(encoder.encode("maria"))
+					.roles("ADM")
+					.build();
+		
+		auth.jdbcAuthentication()
+		.dataSource(dataSource)
+		.passwordEncoder(encoder)
+		.withUser(user);
+	}
+	
+Veja que criamos um encriptador para o mesmo criptografar a senha do usuario. Criamos do tipo BCryptPasswordEncoder
+
+Depois para facilitar nossa vida criamos um usuário com a senha já encriptografada. É o UserDetails, mas o código que o cria não deve
+existir na vida real, pois mostraria a senha do usuário!!! Fizemos isso apenas para facilitar!
+
+E por fim, através do auth indicamos que vamos usar o JdbcAuthentication, passamos o datasource e o encoder. O withUser() foi apenas
+para salvar o usuáriop que criamos, essa linha na vida real também não deve existir.
+	
+	
+Quando fazemos um login o usuário é enviado para página de login. Podemos musar isso no método configure(HttpSecurity), chamando o 
+metodo defaultSuccessUrl() e passando qual requisição deve ser chamada se o login der certo. Veja como ficou:
+
+	@Override
+	protected void configure(HttpSecurity http) throws Exception {
+		http.authorizeRequests()
+		.anyRequest()
+		.authenticated()
+		.and()
+        .formLogin(form -> form
+        		//Aqui força uma requisição com path /login e criamos um controller para retornar uma página html
+                .loginPage("/login")
+                .defaultSuccessUrl("/home", true)
+                .permitAll()
+            )
+        .logout(logout -> logout.logoutUrl("/logout"));
+	}	
+	
+	
+
+Agora temos que vincular o Pedido com um Usuario. Ja temos uma classe mapeada para tabela Pedido, mas não temos ainda para 
+Usuario. Vamos ter que criar. Siga o passo a paso:
+
+1) Criar a classe modelo User:
+
+	@Entity
+	@Table(name = "users")
+	public class User {
+
+		@Id
+		private String username;
+		private String password;
+		private Boolean enabled;
+		
+		@OneToMany(cascade = CascadeType.ALL, mappedBy = "user", fetch = FetchType.LAZY)
+		private List<Pedido> pedidos;
+		
+		//Getters e Setters
+	}	
+	
+2) Para finalizar a relação entre Pedido e User, temos que ir na classe Pedido e adicionar o atributo:
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	private User user;
+	
+3) Agora na classe HomeController, no metodo home(), estamos fazendo uma busca por todos os Pedidos, mas agora vamos mudar isso,
+vamos fazer uma busca de todos pedidos filtrando pelo usuario logado. Então o método que repository que vamos chamar é o 
+findAllByUsuario(), mas este não existe por padrão, então temos que criar na interface PedidoRepository esse metodo.
+Mas ainda é preciso descobrir qual usuário está logado e fazendo a requisição, para isso existe o objeto do tipo Principal, basta
+colocá-lo como argumento no método que trata a requsição que os dados do usuario logado é setado no Principal.
+Veja como vai ficar:
+
+Classe PedidoController:
+
+		@GetMapping
+		public String home(Model model, Principal principal) {
+						
+			//Buscando no banco agora com Repository
+			List<Pedido> pedidos = pedidoRepository.findAllByUsuario(principal.getName());
+			
+			model.addAttribute("pedidos", pedidos);
+			
+			return "home";
+		}
+	
+Interface PedidoRepository:
+
+	@Query("SELECT p FROM Pedido p JOIN p.user u WHERE u.username = :username")
+	List<Pedido> findAllByUsuario(@Param("username")String username);
+
+4) Agora temos que ir no banco de dados e nos itens salvos adicionar um valor de usuario.	
+	
+	
+Agora vamos fazer o vinculo do Pedido com o Usuario logao no momento que for cadastrar o Pedido. Ou seja, vamos alterar o metodo
+novo() da classe PedidoController. Para isso siga o passo a passo:
+
+1) Temos que criar um Repository de User, no caso será a interface UserRepository extends JPARepository(User,String) e criar uma
+assinatura de método que busca um User através do username. Ficará assim:
+
+	@Repository
+	public interface UserRepository extends JpaRepository<User, String> {
+
+		User findByUsername(String username);
+		
+	}
+
+2) Agora na classe PedidoRepository temos que criar o atributo do tipo UserRepository:
+
+	@Autowired
+	private UserRepository userRepository;
+	
+3) E por fim, no metodo novo() devemos pegar o username do usuario logado com SecurityContextHolder(), buscar um usuário através
+do username e por fim adicioná-lo no pedido. Veja:
+
+	@PostMapping("/novo")
+	public String novo(@Valid RequisicaoNovoPedido requisicao, BindingResult result) {
+		
+		//Se tiver erro, volte para tela do formulario
+		if(result.hasErrors()) {
+			return "pedido/formulario";
+		}
+			
+		//Pegando Username do Usuário Logado. Só pegamos o username do mesmo!
+		String userName = SecurityContextHolder.getContext().getAuthentication().getName();
+		
+		User user = userRepository.findByUsername(userName);
+		
+		//Transformando um DTO em Entity
+		Pedido pedido = requisicao.toPedido();
+		pedido.setUser(user);
+		repository.save(pedido);
+
+		return "redirect:/home";
+	}
+	
+4) Para nossa aplicação funcionar temos que desabilitar o CSRF, para isso vamos usar o metodo csrf().disable() lá na classe 
+WebSecurityConfig no metodo configure(HttpSecurity). Veja como ficou:
+	
+	@Override
+	protected void configure(HttpSecurity http) throws Exception {
+		http.authorizeRequests()
+		.anyRequest()
+		.authenticated()
+		.and()
+        .formLogin(form -> form
+        		//Aqui força uma requisição com path /login e criamos um controller para retornar uma página html
+                .loginPage("/login")
+                .defaultSuccessUrl("/home", true)
+                .permitAll()
+            )
+        .logout(logout -> logout.logoutUrl("/logout"))
+        .csrf().disable();
+	}	
+	
+	
+	
+Outra mudança que podemos fazer para melhorar nosso projeto:
+
+Hoje acessamos nossa aplicação via localhost:8080/home, só que existe o contexto da aplicação, que podemos adicionar ou alterar em
+nosso projeto e assim o endereço seria localhost:8080/mudi/home (mudi é o contexto). Ao fazermos a mudança de contexto teriamos
+que mudar todo link de nossa aplicação e as actions dos fomulários!
+
+Para não nos preocuparmos com contexto, podemos alterar o form do arquivo formulario.html.
+
+Antes era assim:
+
+	<form th:object="${requisicaoNovoPedido}" class="card-body" action="/pedido/novo" method="post">
+	
+Deixar assim:
+
+	<form th:object="${requisicaoNovoPedido}" class="card-body" th:action="@{/pedido/novo}" method="post">
+	
+Veja como ficou o atributo action! Dessa forma o Spring gerencia nosso contexto.
+
+	
+	
+	
+	
+	
+	

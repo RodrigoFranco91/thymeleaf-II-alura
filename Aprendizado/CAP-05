@@ -1,0 +1,287 @@
+Neste capitulo falamos sobre AJAX e Vue.js.
+
+
+A instalação do Vue.js é muito simples. Basta pegar sua biblioteca (arquivo .js) e adicionar no projeto.
+
+O VueJS que está rodando no navegador do usuário vai solicitar a nossa API Rest (Java com Spring) a listagem de pedidos que estão 
+aguardando. Quando o Vue.js receber a lista de pedidos ele vai gerar o HTML com os formulários dos pedidos e quando o botão desse
+formulário for pressionado a aplicação Vue.js vai enviar uma requsição de POST para a nossa API Rest (Java com Spring) e depois disso
+Vue.js vai gerar outro HTML para informar que foi feito o "cadastro".
+
+
+Vamos agora montar a tela de oferta (nela vamos usar o Vue.js). Siga o passo a passo:
+
+1) Abra o arquivo /oferta/home.html e antes da tag de fechamento </body> devemos colocar (conteudo pego do site do vue.js):
+
+	<script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+	
+Com isso estamos importando o Vue.js em nosso projeto!
+
+2) Tenha em mente que antes de um código do vue.js ser executado o import deve ter sido feito! E para garantir isso vamos fazer o 
+seguinte. Antes da linha do passo 1, vamos criar outra tag <script> com o seguinte conteudo:
+
+	function onLoad(){
+		
+	}
+	
+E na tag <body> deste arquivo devemos carregar essa função onLoad. Para isso a tag <body> deve ficar assim:
+
+	<body onload="onLoad()">
+	
+Será dentro do bloco onLoad() que vamos digitar nosso código Vue.jw
+
+3) Tenha em mente que o Vue.js trabalha assim: o conteúdo HTML (por exemplo div) terá um id. E o código do Vue.js será vinculado ao
+ID da página HTML (isso mapeia o HTML com o código Vue e vice-versa). Veja o exemplo: na <div> que principal, que tem 
+class="container" vai ganhar o id "ofertas", ficando assim:
+
+	<div class="container" id="ofertas">
+	
+E dentro do bloco onLoad(){} vamos colocar o código, ficando assim:
+
+	function onLoad(){
+		var app = new Vue({
+			el : '#ofertas',
+			data : {
+				message : 'Hello Vue!'
+			}
+		});
+	}
+	
+O trecho que vinculou com o ID do HTML foi: 
+
+	el : '#ofertas'
+	
+O conteudo adicionado ao data é o conteudo que pode ser acessado pelo HTML, no caso a <div>
+
+
+Agora vamos alterar esse código, para de fato fazer o que tem que ser feito! O corpo da funco onLoad() tem que ficar assim:
+
+		function onLoad(){
+			var app = new Vue({
+				el : '#ofertas',
+				data : {
+					pedidos : [
+						   {
+							      "id":3,
+							      "nomeProduto":"PS5",
+							      "valorNegociado":null,
+							      "dataDaEntrega":null,
+							      "urlProduto":"url-do-ps5",
+							      "urlImagem":"Imagem-do-PS5",
+							      "descricao":"",
+							      "status":"AGUARDANDO"
+							   },
+							   {
+							      "id":2,
+							      "nomeProduto":"Macbook Pro",
+							      "valorNegociado":15000.00,
+							      "dataDaEntrega":"2021-07-09",
+							      "urlProduto":"url do mac",
+							      "urlImagem":"imagem do mac",
+							      "descricao":"Notebook rápido da Apple",
+							      "status":"AGUARDANDO"
+							   }]
+				}
+			});
+		}
+		
+Veja que agora data tem uma lista de pedido (em JSON). Desta forma estamos chumbando essa lista com dois itens, depois haverá a
+consulta via GET a nossa API e o resultado da consulta cairá em DATA. Mas vamos deixar assim somente para montar nosso front.
+Agora com Vue.js podemos mostrar o conteúdo que esta em DATA. Veja como ficou o HTML (/oferta/home.html):
+
+
+		<!-- v-for é um laço de repetição do Vue.js. 
+			 O pedido é a variavel que representa o item em cada iteração
+			 O pedidos é o nome da lista que está dentro de data lá no Vue.js	-->
+		<div class="card mt-3" v-for="pedido in pedidos">
+				<div class="card-header alert-dark" >{{pedido.nomeProduto}} </div>
+			<div class="card-body">
+				<div class="row">
+					<div class="col-12 col-sm-8 mb-3">
+						<div class="row">
+							<div class="col-md-5"> Valor: <input /> </div>
+							<div class="col-md-7"> Data da entrega: <input /> </div>
+						</div>
+						
+						<div> Produto</div>
+						<div> <a type="text" v-bind:href="pedido.urlProduto">{{pedido.nomeProduto}}</a></div>
+						
+						<div> Descrição:</div>
+						<div>
+							<textarea  class="form-control">{{pedido.descricao}}</textarea>
+						</div>
+					</div>
+					<div class="col-12 col-sm-4">
+						<div>
+							<img class="img-thumbnail" v-bind:src="pedido.urlImagem"/>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		
+Veja o que usamos do Vue.js:
+
+Veja que agora para fazer um laço de repetiçao usamos o  v-for e cada item será reconhecido como pedido. Pedidos é a coleção (lista)
+que foi adicionada em DATA;
+
+Para acessar cada atributo de um pedido e já exibir seu valor podemos colocar: {{pedido.nomeProduto}}
+
+Usamos o v-bind:href para criar o argumento href de uma <a>
+
+Usamos o v-bind:src para criar o argumento src da tag <img>
+
+
+
+Usando o Axios. Com ele o Vue.js vai fazer requisição para o backend. Siga o passo a passo pra isso:
+
+1) Devemos adicionar em nosso projeto a biblioteca Axios. Para isso tem várias maneiras, vamos fazer via <script>, então depois
+do <script> que adiciona o Vue.js vamos colocar:
+
+	<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
+2) Agora temos que usar o Axios. Existe a função mouted() do Vue.js que é sempre chamada após renderizer o HTML, então podemos
+fazer o uso do Axios dentro desta função! Veja como ficou a função onLoad() (É dentro dela que também chamaos o mouted.) Veja:
+
+	<script>
+		function onLoad(){
+			var app = new Vue({
+				el : '#ofertas',
+				data : {
+					pedidos : []
+				},
+				mounted () {
+				    axios
+				      .get('http://localhost:8080/api/pedidos/aguardando')
+				      .then(response => (this.pedidos = response.data))
+				  }
+			});
+		}
+	</script>
+
+Veja que dentro do mouted() usamos o axios e indicamos o path que vamos fazer a consulta! A resposta do backend estamos colocando
+no this.pedidos, ou seja, atributo do data do Vue.js.	
+	
+Agora já podemos fazer a requisição: localhost:8080/oferta
+
+
+
+Vamos agora implementar a função do usuário de fato criar a oferta!
+Siga o passo a passo:
+
+1) Vamos criar a classe DTO de oferta dado pelo cliente, ou seja, uma classe 'casca' que vai guardar os dados que o usuário vai
+digitar! A classe se chamou RequisicaoNovaOferta e ficou assim:
+
+	public class RequisicaoDeNovaOferta {
+
+		private Long pedidoId;
+
+		private String valor;
+
+		private String dataDaEntrega;
+
+		private String comentario;
+		
+		//Getter e Setter
+		
+		//Metodo toOferta()
+	}
+
+2) Vamos criar a classe OfertaRest, essa será anotada com @RestController e @RequestMapping("/api/ofertas"). Nela haverá o metodo
+que vai tratar as ofertas. Veja:
+
+
+	@RestController
+	@RequestMapping("/api/ofertas")
+	public class OfertaRest {
+
+		@Autowired
+		private PedidoRepository pedidoRepository;
+		
+		@PostMapping
+		public Oferta criaOferta(RequisicaoDeNovaOferta requisicao) {
+			
+			Optional<Pedido> pedidoBuscado = pedidoRepository.findById(requisicao.getPedidoId());
+			if(!pedidoBuscado.isPresent()) {
+				return null;
+			}
+			
+			Pedido pedido = pedidoBuscado.get();
+			
+			Oferta nova = requisicao.toOferta();
+			nova.setPedido(pedido);
+			
+			pedido.getOfertas().add(nova);
+			//Só salvamos o pedido, pois ele tem atributo ofertas com cascade all.
+			pedidoRepository.save(pedido);
+			
+			return nova;
+		}
+		
+	}
+	
+3) Na classe Pedido criamos um atributo do tipo List<Oferta>.
+
+4) Criamos a classe Oferta, veja:
+
+	@Entity
+	public class Oferta {
+
+		@Id
+		@GeneratedValue(strategy = GenerationType.IDENTITY)
+		private Long id;
+
+		private BigDecimal valor;
+
+		private LocalDate dataDaEntrega;
+
+		private String comentario;
+
+		@ManyToOne(fetch = FetchType.LAZY)
+		private Pedido pedido;
+
+		//getter e setter
+
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

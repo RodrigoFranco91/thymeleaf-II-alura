@@ -1,0 +1,203 @@
+Neste capitulo aprendemos sobre Paginação e Cache.
+
+Atualmente a página home.html de nossa aplicação faz o filtro da listagem de pedido de acordo com o usuário logado, mas não é isso que
+queremos. A página home.html futuramente vai mostrar pedido de diversas pessoas, mas queremos que o usuário ao logar veja a listagem
+só de seus pedidos e ao filtrar por status também veja só seu pedido. Siga o passo a passo para fazer essas mudanças:
+
+1) Crie a classe UsuarioController. Veja como ficou:
+
+	@Controller
+	@RequestMapping("usuario")
+	public class UserController {
+		
+		//Spring injetando um PedidoRepository para nós.
+		@Autowired
+		private PedidoRepository pedidoRepository;
+		
+		@GetMapping("pedido")
+		public String home(Model model, Principal principal) {
+			
+			//Buscando no banco de dados todos pedidos.
+	//		Query query = em.createQuery("SELECT p FROM Pedido p", Pedido.class);
+	//		List<Pedido> pedidos = query.getResultList();
+			
+			//Buscando no banco agora com Repository
+			List<Pedido> pedidos = pedidoRepository.findAllByUsuario(principal.getName());
+			
+			model.addAttribute("pedidos", pedidos);
+			
+			return "usuario/home";
+		}
+		
+		@GetMapping("pedido/{status}")
+		public String porStatus(Model model, @PathVariable("status") String status, Principal principal) {
+			
+			List<Pedido> pedidos = pedidoRepository.findByStatusEUsuario(StatusPedido.valueOf(status.toUpperCase()), 
+			principal.getName());
+			
+			model.addAttribute("pedidos", pedidos);
+			model.addAttribute("status", status);
+			
+			return "usuario/home";
+		}
+		
+		@ExceptionHandler(IllegalArgumentException.class)
+		public String onError() {
+			return "redicrect:/usuario/home";
+		}
+
+	}
+	
+
+2) Em PedidoRepository temos que criar a assinatura de metodo para fazer busca de pedido através do usuario logado e do status,
+Veja como ficou:
+
+	@Query("SELECT p FROM Pedido p JOIN p.user u WHERE u.username = :username and p.status = :status")
+	List<Pedido> findByStatusEUsuario(@Param("status") StatusPedido satus, @Param("username") String username);
+
+3) Devemos agora criar dentro da pasta templates a pasta usuario e dentro desta pasta colocar uma copia do arquivo home.html, que
+será a página do usuário logado. Temos que mudar o endereço dos links, para agora chamar a listagem por status de /usuario/pedido
+qué é o path que chama UserController. Veja como ficou:
+
+<div class="navbar-nav">
+<a th:classappend="${status} == 'null' ? 'active'" class="nav-item nav-link " th:href="@{usuario/pedido}">Todos</a>
+<a th:classappend="${status} == 'aguardando' ? 'active'" class="nav-item nav-link" th:href="@{usuario/pedido/
+	aguardando}">Aguardando</a>
+<a th:classappend="${status} == 'aprovado' ? 'active'" class="nav-item nav-link" th:href="@{usuario/pedidoaprovado}">Aprovado</a>
+<a th:classappend="${status} == 'entregue' ? 'active'" class="nav-item nav-link" th:href="@{usuario/pedidoentregue}">Entregue</a>
+</div>
+
+4) Temos agora que mudar a requisição a ser chamada quando o usuário é logado. Isso é feito la na classe WebSecurityConfig no metodo
+configure(HttpSecurity). Vai ficar assim:
+
+		@Override
+		protected void configure(HttpSecurity http) throws Exception {
+			http.authorizeRequests()
+			.anyRequest()
+			.authenticated()
+			.and()
+		.formLogin(form -> form
+				//Aqui força uma requisição com path /login e criamos um controller para retornar uma página html
+		        .loginPage("/login")
+		        .defaultSuccessUrl("/usuario/pedido", true)
+		        .permitAll()
+		    )
+		.logout(logout -> logout.logoutUrl("/logout"))
+		.csrf().disable();
+		}
+		
+5) Por fim o método home() da classe HomeController pode voltar a listar todos os pedidos sem filtro. Depois pensamos em algo bacana!
+
+
+
+Fizemos mais alteraçoes no projeto para melhorá-lo. Colocamos links de navegação na página home para usuário logado. 
+
+Tornamos a página home (sem usuário logado) de fato livre para todos terem acesso. Para isso alteramos o método 
+configure(HttpSecurity) da classe WebSecurityConfig. Usamos o antMatchers() e o permitall() para isso. Veja como ficou:
+
+	@Override
+	protected void configure(HttpSecurity http) throws Exception {
+		http
+		.authorizeRequests()
+		.antMatchers("/home/**")
+			.permitAll()
+		.anyRequest()
+			.authenticated()
+		.and()
+	.formLogin(form -> form
+			//Aqui força uma requisição com path /login e criamos um controller para retornar uma página html
+	        .loginPage("/login")
+	        .defaultSuccessUrl("/usuario/pedido", true)
+	        .permitAll()
+	    )
+	.logout(logout -> logout.logoutUrl("/logout").logoutSuccessUrl("/home"))
+	.csrf().disable();
+	}
+
+Também mudamos a navegação, agora quando usuário faz logout ele é enviado para página home. Veja no código anterior que usamos o
+logoutSuccessUrl() para fazer isso.
+
+
+
+Criando páginação ao listar pedidos, pois a página está exibidindo todos os pedidos, imagina se tivessemos 1 milhao de pedidos, ia
+quebrar! Para criar essa paginação, siga o passo a passo:
+
+1) Vamos alem de criar a paginação (limitar a quantidade de pedidos por página), vamos ordernar pela data, ou seja, os mais recentes
+devem aparecer primeiro. Para isso devemos mudar a assinatura do metodo findByStatus() da interface PedidoRepository, devemos agora 
+receber como argumento um objeto do tipo Sort (import org.springframework.data.domain.Sort;). Veja:
+
+	List<Pedido> findByStatus(StatusPedido status, Sort sort);
+
+2) Na classe HomeController, no metodo home() ao chamar o metodo findByStatus() vamos ter que passar um argumento do tipo Sort. Veja
+como vai ficar:
+
+	@GetMapping
+	public String home(Model model) {
+		
+		
+		//O sort é para organizar/filtrar a busca
+		Sort sort = Sort.by("dataDaEntrega").descending();
+		
+		//Buscando no banco agora com Repository
+		List<Pedido> pedidos = pedidoRepository.findByStatus(StatusPedido.ENTREGUE, sort);
+		
+		model.addAttribute("pedidos", pedidos);
+		
+		return "home";
+	}
+	
+3) Agora vamos fazer a páginacão de fato. O primeiro passo é alterar novamente a assinatura	do metodo findByStatus() da interface 
+PedidoRepository. Ao inves de receber um Sort devemos receber um Pageable (import org.springframework.data.domain.Pageable;)
+ficando assim:
+
+	List<Pedido> findByStatus(StatusPedido status, Pageable sort);
+
+4) Agora na classe HomeController, no metodo home() ao chamar o metodo findByStatus() vamos ter que passar um argumento do tipo 
+Pageable que vai ter possuir a página a ser exibida (0), quantidade de item pro página (5), e quais filtros vai ter (sort). Veja
+como vai ficar: 
+
+	@GetMapping
+	public String home(Model model) {
+		
+	
+		//O sort é para organizar/filtrar a busca
+		Sort sort = Sort.by("dataDaEntrega").descending();
+		
+		//Criando uma paginacao. Primeiro argumento é a pagina inicia e o segundo é a quantidade de itens por pagina
+		//Passamos o sort, pois queremos manter a organizacao/filtro ja feito
+		PageRequest paginacao = PageRequest.of(0, 5, sort);
+		
+		//Buscando no banco agora com Repository
+		List<Pedido> pedidos = pedidoRepository.findByStatus(StatusPedido.ENTREGUE, paginacao);
+		
+		model.addAttribute("pedidos", pedidos);
+		
+		return "home";
+	}
+	
+	
+	
+Agora vamos usar o recurso do Cache. Pense comigo, todo usuário que acessa a home exige que façamos uma consulta ao banco e isso
+pode ser um problema. Podemos guardar o resultado da consulta ao banco de dados por um periodo do tempo ou enquanto o conteudo a 
+ser consultado não sofreu mudanças no Cache e isso evitará consultas desnecessárias! Para implementar o cache, siga o passo a passo:
+
+1) A consulta que queremos cachear é feita pelo metodo findByStatus() da classe PedidoRepository, então esse método será anotado com
+@Cacheable("nome do cache"). Ficando assim:
+
+	@Cacheable("pedidos")
+	List<Pedido> findByStatus(StatusPedido status, Pageable sort);
+	
+2) Agora temos que habilitar o cache em nosso projeto, então na classe MudiApplication, é a classe principal que tem o metodo main()
+devemos adicionar em cima da classe a anotação @EnableCaching. Veja:
+
+	@EnableCaching
+	@SpringBootApplication
+	public class MudiApplication {
+
+		public static void main(String[] args) {
+			SpringApplication.run(MudiApplication.class, args);
+		}
+
+	}
+	
+Há muito mais recurso sobre o cache! É legal dar uma aprofundada nesse assunto!

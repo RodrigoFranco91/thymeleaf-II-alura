@@ -1,0 +1,213 @@
+Neste capitulo vamos aprender a fazer validações com o Vue.js.
+
+
+1) O primeiro ato feito foi vincular os inputs de valor, data e comentario da pagina /oferta/home.html com o objeto pedido (aquele que
+é um item da lista pedidos. E pedidos é a lista obtida com a requisixao do axios!). Para se fazer isso usamos o v-model, veja:
+
+	<input class="form-control" v-model="pedido.dataDaEntrega" />
+	
+2) Passo foi cirar um botão para quando o usuário terminar de completar sua proposta ele enviar a mesma. Veja:
+
+	<button v-on:click="enviarOferta(pedido)" class="btn btn-primary mt-3">Enviar oferta</button>
+
+3) Veja que esse botão dispara um ação, ou seja, chama um método, no casso enviarOferta(pedido). Podemos criar metodos dentro de 
+methods que também é um argumento do app Vue.js, veja como ficou (Por enquantod só printamos na tela com console.log()):
+
+
+	<script>
+		function onLoad(){
+			var app = new Vue({
+				el : '#ofertas',
+				data : {
+					pedidos : []
+				},
+				mounted () {
+				    axios
+				      .get('http://localhost:8080/api/pedidos/aguardando')
+				      .then(response => (this.pedidos = response.data))
+				  },
+				methods:{
+					enviarOferta: function(pedido){
+						console.log(pedido);
+					}
+				}
+			});
+		}
+	</script>
+	
+4) Vamos de fato fazer nosso methods fazer a requsição POST para o nosso back-end salvar a oferta. VEja como ficou:
+
+	<script>
+		function onLoad(){
+			var app = new Vue({
+				el : '#ofertas',
+				data : {
+					pedidos : []
+				},
+				mounted () {
+				    axios
+				      .get('http://localhost:8080/api/pedidos/aguardando')
+				      .then(response => (this.pedidos = response.data))
+				  },
+				methods:{
+					enviarOferta: function(pedido){
+					    axios
+					      .post('http://localhost:8080/api/ofertas',{
+					    	  pedidoId:pedido.id,
+					    	  valor: pedido.valorNegociado,
+					    	  dataDaEntrega: pedido.dataDaEntrega,
+					    	  comentario: pedido.comentario
+					      })
+					      .then(response => console.log(response));
+					}
+				}
+			});
+		}
+	</script>	
+
+Veja que ao fazer o .post() tive que passar dois argumentos, um é o path da requisição e o outro é o objeto que tenho que enviar, no
+caso o JSON. Para montar esse JSON eu abro {} e dentro dela eu coloco nome do atributo : e o valor. O nome do atributo tem que bater
+com o nome do Objeto DTO lá do Java, no caso RequisicaoDeNovaOferta. O valor do JSON pegamso do Objeto que tem o valor, neste exemplo
+colocamos diretamente no objeto pedido com Vue.js.
+
+5) Agora o método que vai tratar a requisição localhost:8080/api/ofertas tem que de fato receber um objeto que vem no corpo da 
+requisição. O método que vai tratar é o criaOferta() da classe OfertaRest. Para indicar que um objeto virá no corpo da requisição
+usamos a anotação @RequestBody. Veja:
+
+	@PostMapping
+	public Oferta criaOferta(@RequestBody RequisicaoDeNovaOferta requisicao) {}
+	
+6) Nesse ponto já estamos salvando as ofertas no banco. Mas o usuário não tem nenhuma informação se deu ou não certo. Para isso
+vamos mudar o botão de Enviar Oferta! Após envio o mesmo ficará Verde. Fizemos isso assim:
+
+	<button v-if="pedido.ofertaEnviada" class="btn btn-success mt-3">Oferta Enviada</button>
+	<button v-else v-on:click="enviarOferta(pedido)" class="btn btn-primary mt-3">Enviar oferta</button>
+	
+Fizemos um if com v-if para ver se o atributo ofertaEnviada é verdadeiro. Mas esse atributo não existe. Então no momento em que já
+fazemos a requisição get e eu recebo a lista de Pedidos eu vou fazer um foreach e em cada pedido vou adicionar esse atributo. Veja:
+
+	mounted () {
+	    axios
+	      .get('http://localhost:8080/api/pedidos/aguardando')
+	      .then(response => {
+	    	    response.data.forEach(pedido => pedido.ofertaEnviada = false)
+	    	  	this.pedidos = response.data
+	    	  })
+	  }
+	  
+E na resposta da requisição POST eu vou novamente setar esse atributo para verdadeido. Veja:
+
+	methods:{
+		enviarOferta: function(pedido){
+		    axios
+		      .post('http://localhost:8080/api/ofertas',{
+		    	  pedidoId:pedido.id,
+		    	  valor: pedido.valorNegociado,
+		    	  dataDaEntrega: pedido.dataDaEntrega,
+		    	  comentario: pedido.comentario
+		      })
+		      .then(response => pedido.ofertaEnviada = true);
+		}
+	}
+	
+7) Agora tudo está perfeito, mas se passarmos valores errado, por exemplo letra no campo data vai ocorrer erro. Devemos criar
+validadores. Na classe DTO RequisicaoDeNovaOferta adicionamos anotações de BeanValidation nos atributos, veja:
+
+	private Long pedidoId;
+	
+	@NotNull
+	@Pattern(regexp = "^\\d+(\\.\\d+{2})?$")
+	private String valor;
+
+	@NotNull
+	@Pattern(regexp = "^\\d{2}/\\d{2}/\\d{4}$")
+	private String dataDaEntrega;
+
+	private String comentario;
+	
+E a action que recebe esse argumento tem que receber a anotação @Valid. Veja:
+
+	@PostMapping
+	public Oferta criaOferta(@RequestBody @Valid RequisicaoDeNovaOferta requisicao) {}
+	
+8) Com a anotação o erro ainda continua, mas agora sabemos qual validação falhou e com isso poderemos informar ao usuario.
+
+
+
+Vamos agora capturar o erro de validação que ocorreu e mostrar ao Usuário, ou seja, vamos mostrar esse erro com o Vue.JS. Para isso
+siga o passo a passo:
+
+1) Estamos fazendo uma GET ao nosso backend que retorna uma lista de pedidos. Em cada pedido desta lista devemos criar o atributo
+erros que será um objeto que tem os atributos que podem a vir falhar na validação, no nosso caso é valor e dataDaEntrega. Veja
+como ficou:
+
+	mounted () {
+		    axios
+		      .get('http://localhost:8080/api/pedidos/aguardando')
+		      .then(response => {
+		    	    response.data.forEach(pedido => {
+		    	    	pedido.ofertaEnviada = false;
+		    	    	pedido.erros = {
+		    	    			valor : '',
+		    	    			dataDaEntrega: '',
+		    	    	}
+		    	    })
+		    	  	this.pedidos = response.data
+		    	  })
+		  }
+
+
+2) Agora no momento de fazer o post vamos usar o .catch() para capturar algum erro e se houver vamos adicionar no objeto o erro.
+Vamos adicionar justamente nos atributos criados no passo 1. Veja como ficou o codigo:
+
+      .catch(error => {
+    	  error.response.data.errors.foreach(error =>{
+    		  pedido.erros[error.field] = error.defaultMessage;
+    	  })
+      })
+
+3) Pense no cenário que usuário digitou errado os dados, recebeu mensagem de alerta e corrigiu e enviou correto. Do jeito que está
+a mensagem de erro vai permanecer. Vamos zerar os atributos de erro, para cada clique no botão de enviar proposta. Para isso 
+fizemos:
+
+	methods:{
+		enviarOferta: function(pedido){
+			pedido.erros = {
+			valor : '',
+			dataDaEntrega: '',
+	};
+
+4) Por fim, vamos exibir a mensagem de erro nos inputs (em baixo deles):
+
+<div class="col-md-5">
+Valor: <input v-bind:class="{'is-invalid':pedido.errors.valor !== ''}" class="form-control" v-model="pedido.ValorNegociado"/> 
+<div v-if="pedido.erros.valor" class="invalid-feedback">
+	{{pedido.erros.valor}}
+</div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
